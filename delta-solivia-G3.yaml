@@ -1,7 +1,6 @@
 # *****************************************************************
 # *          ESPHome Custom Component Modbus sniffer for          *
-# *              Delta Solvia Inverter 3.0 EU G4 TR               *
-# *             installed with Solivia Gateway M1 D2.             *
+# *              Delta Solvia Inverter 3.0 EU G3 TR               *
 # *****************************************************************
 #
 # This was originally made by htvekov https://github.com/htvekov/solivia_esphome
@@ -11,29 +10,7 @@
 # Remember to copy the Custom Component solivia.h file to the ESPHome folder in
 # Home Assistant !!
 #
-# This config doesn't send any commands to the inverter !!
-# Instead it relies on the gateways constant request for data (appx. 1 package pr. second).
-#
-# If you don't have a gateway, the package request can instead easily be send from
-# ESPHome using uart.write and eg. triggered via the ESPHome Time component.
-#
-# Example:
-# time:
-#   - platform: homeassistant
-#     id: esptime
-#   - platform: sntp
-#     on_time:
-#        # Request package every 10 seconds from inverter at slave address: 0x01
-#       - seconds: /10
-#         then:
-#           - uart.write: [0x02, 0x05, 0x01, 0x02, 0x60, 0x01, 0x85, 0xFC, 0x03]
-# 
-#
-# NOTE !!
-# My inverter, unlike most examples found on the net, returns a 255 bytes
-# response. Most common inverter response length is 150 bytes (0x96) or 157 (0x9D).
-# So almost all commands/registers do not match other examples on the net.
-# Package structure is also somewhat different.
+# This config send any commands to the inverter !!
 #
 # Below the actual ESPHome config, you'll find a compiled list of all registers
 # I've identified. Those marked with a question mark are not confirmed,
@@ -45,26 +22,18 @@
 #
 # My config:
 # Inverter part no.: EOE46010287
-# Single string input PV1: 3500W
+# Single string input PV1: 3300W
 # Single phase output: L1
-# Slave address: 0x01
+# Slave address: 0x01 0x02 0x03
 # Baud rate: 19200
 # Install country: Denmark
 #
-# Gateway request: 02:05:01:02:60:01:85:FC:03
-# Inverter response: 02:06:01:FF:60:01 + 255 data bytes (incl. CRC bytes) + ETX byte
+# Gateway request: 02:05:0X:02:60:01:8X:XX:03
+# Inverter response: 02:06:0X:FF:60:01 + 157 data bytes (incl. CRC bytes) + ETX byte
 #
 # Actually the response doesn't match the protocol, as the CRC bytes and trailing
 # ETX byte should be excluded from data length identifier (0xff)
 # Here, strangely enough, the CRC is included, but not the ETX ?
-#
-# A few of the 'public known' commands have been tested. Most unfortunately did fail.
-# Haven't really spend much time on testing further commands, as all the data
-# i need is in gateway package.
-# But commmand for eg. inverters serial no. is working ok on my inverter.
-# - uart.write: [0x02, 0x05, 0x01, 0x02, 0x00, 0x01, 0xAD, 0xFC, 0x03] will response
-# correctly with serial no.
-
 
 esphome:
   name: "delta-solivia-G3"
