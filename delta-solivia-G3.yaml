@@ -37,7 +37,7 @@
 esphome:
   name: "delta-solivia-8266"
   includes:
-    - solivia-test.h
+    - solivia-G3.h
 
 external_components:
   - source:
