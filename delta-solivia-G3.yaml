@@ -34,55 +34,84 @@
 # Actually the response doesn't match the protocol, as the CRC bytes and trailing
 # ETX byte should be excluded from data length identifier (0xff)
 # Here, strangely enough, the CRC is included, but not the ETX ?
-
 esphome:
-  name: "delta-solivia-G3"
-  platform: ESP8266
-  board: d1_mini
+  name: "delta-solivia-8266"
   includes:
-    - solivia-G3.h
+    - solivia-test.h
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/esphome/esphome
+      ref: refs/tags/2024.12.4
+    components: [ custom, custom_component ]
     
+esp8266:
+  board: d1_mini
+
 # Enable logging
 logger:
-#level: VERBOSE
-  #baud_rate: 0
+  level: INFO
+  baud_rate: 0
 
 # Enable Home Assistant API
 api:
 
+mqtt:
+  topic_prefix: esphome\
+  discovery: false
+  broker: 192.168.1.36
+  port: 1883
+  username: mqtt
+  password: hammer
+
 ota:
+  platform: esphome
   password: "my_ota_password"
 
 wifi:
-  ssid: 'xxxx'
-  password: 'xxxx'
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  domain: !secret domain
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
-    ssid: "Solivia_G3 Fallback Hotspot"
+    ssid: "Solivia_8266 Fallback Hotspot"
     password: "my_fallback_password"
 
 captive_portal:
 
-# Remove hash signs and activate, if you don't have a Solivia gataway.
-# With this you emulate the gateways request for data response from the inverter.
-# With settings below, the requests are send every 10 seconds.
-#
 time:
-  - platform: homeassistant
-    id: esptime
   - platform: sntp
     on_time:
-       # Request package every 10 seconds from inverter at slave address: 0x01
+       # Request package every 5 seconds from inverter at slave address: 0x01
       - seconds: 1/3
         then:
+          - switch.turn_on: tx
           - uart.write: [0x02, 0x05, 0x01, 0x02, 0x60, 0x01, 0x85, 0xFC, 0x03]
+          - switch.turn_off: tx
       - seconds: 2/3
         then:
+          - switch.turn_on: tx
           - uart.write: [0x02, 0x05, 0x02, 0x02, 0x60, 0x01, 0x85, 0xB8, 0x03]
+          - switch.turn_off: tx
       - seconds: 3/3
         then:
+          - switch.turn_on: tx
           - uart.write: [0x02, 0x05, 0x03, 0x02, 0x60, 0x01, 0x84, 0x44, 0x03]
+          - switch.turn_off: tx
+
+interval:
+  - interval: 5s
+    then:
+      - mqtt.publish:
+          topic: "PV/Delta"
+          payload: !lambda |-
+            char buffer[200];
+            snprintf(buffer, sizeof(buffer),
+              "{\"pv\": {\"power\": %.1f, \"L1\": {\"power\": %.1f, \"voltage\": %.1f,\"current\": %.1f,\"frequency\": %.1f}, \"L2\": {\"power\": %.1f, \"voltage\": %.1f,\"current\": %.1f,\"frequency\": %.1f}}}",
+              id(pv1_ac_power).state + id(pv2_ac_power).state, id(pv1_ac_power).state, id(pv1_dc_voltage).state, id(pv1_dc_current).state, id(pv1_freq).state, id(pv2_ac_power).state, id(pv2_dc_voltage).state, id(pv2_dc_current).state, id(pv2_freq).state);
+            return std::string(buffer);
 
 binary_sensor:
   - platform: status
@@ -101,36 +130,47 @@ uart:
   baud_rate: 19200
   parity: NONE
   stop_bits: 1
+  #flow_control_pin: GPIO0
   #debug: # Activate if you need to investigate package details in the log
+# Example configuration entry
+
+switch:
+  - platform: gpio
+    id: tx
+    name: "TX"
+    pin: 0
 
 sensor:
 - platform: custom
   lambda: |-
     auto delta = new soliviag3(id(mod_bus));
     App.register_component(delta);
-    return {delta->pv1_ac_power, delta->pv1_d_yield, delta->pv1_dc_a, delta->pv1_dc_v, delta->pv1_ac_a, delta->pv1_ac_v, delta->pv1_hs_1, delta->pv1_hs_2, delta->pv1_iso_plus, delta->pv1_iso_minus, delta->pv2_ac_power, delta->pv2_d_yield, delta->pv2_dc_a, delta->pv2_dc_v, delta->pv2_ac_a, delta->pv2_ac_v, delta->pv2_hs_1, delta->pv2_hs_2, delta->pv2_iso_plus, delta->pv2_iso_minus, delta->pv3_ac_power, delta->pv3_d_yield, delta->pv3_dc_a, delta->pv3_dc_v, delta->pv3_ac_a, delta->pv3_ac_v, delta->pv3_hs_1, delta->pv3_hs_2, delta->pv3_iso_plus, delta->pv3_iso_minus};
+    return {delta->pv1_ac_power, delta->pv1_d_yield, delta->pv1_dc_a, delta->pv1_dc_v, delta->pv1_ac_a, delta->pv1_freq, delta->pv1_ac_v, delta->pv1_hs_1, delta->pv1_hs_2, delta->pv1_iso_plus, delta->pv1_iso_minus, delta->pv2_ac_power, delta->pv2_d_yield, delta->pv2_dc_a, delta->pv2_dc_v, delta->pv2_ac_a, delta->pv2_ac_v, delta->pv2_hs_1, delta->pv2_hs_2, delta->pv2_iso_plus, delta->pv2_iso_minus, delta->pv3_ac_power, delta->pv3_d_yield, delta->pv3_dc_a, delta->pv3_dc_v, delta->pv3_ac_a, delta->pv3_ac_v, delta->pv3_hs_1, delta->pv3_hs_2, delta->pv3_iso_plus, delta->pv3_iso_minus};
+
   sensors:
   - name: "PV1 AC power"
     icon: mdi:power-plug
+    id: pv1_ac_power
     device_class: energy
     unit_of_measurement: W
     accuracy_decimals: 0
     # Frequent update, as sensor is used to calculate consumption with iem3155 sensor.total_active_power
     filters:
-    - throttle: 10s 
+    - throttle: 5s 
   
   - name: "PV1 Solar daily yield"
     icon: mdi:chart-line
     device_class: energy
     # Set state_class in order for HA to use sensor in the Energy component
     state_class: total_increasing
-    unit_of_measurement: Wh
-    accuracy_decimals: 0
+    unit_of_measurement: kWh
+    accuracy_decimals: 3
     filters:
-    - throttle: 10s
-    - multiply: 10
+    - throttle: 5s
+    - multiply: 0.01
   
   - name: "PV1 DC current"
+    id: pv1_dc_current
     device_class: energy
     unit_of_measurement: A
     accuracy_decimals: 1
@@ -139,6 +179,7 @@ sensor:
     - multiply: 0.1
   
   - name: "PV1 DC voltage"
+    id: pv1_dc_voltage
     device_class: energy
     unit_of_measurement: V
     accuracy_decimals: 0
@@ -160,51 +201,61 @@ sensor:
     filters:
     - throttle: 10s
   
+  - name: "PV1 HZ"
+    id: pv1_freq
+    device_class: energy
+    unit_of_measurement: V
+    accuracy_decimals: 0
+    filters:
+    - throttle: 10s
+  
   - name: "PV1 Heat sink #1"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
   
   - name: "PV1 Heat sink #2"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
 
   - name: "PV1 ISO +"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
   
   - name: "PV1 ISO -"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
 
   - name: "PV2 AC power"
     icon: mdi:power-plug
+    id: pv2_ac_power
     device_class: energy
     unit_of_measurement: W
     accuracy_decimals: 0
     # Frequent update, as sensor is used to calculate consumption with iem3155 sensor.total_active_power
     filters:
-    - throttle: 10s 
+    - throttle: 5s 
   
   - name: "PV2 Solar daily yield"
     icon: mdi:chart-line
     device_class: energy
     # Set state_class in order for HA to use sensor in the Energy component
     state_class: total_increasing
-    unit_of_measurement: Wh
-    accuracy_decimals: 0
+    unit_of_measurement: kWh
+    accuracy_decimals: 3
     filters:
-    - throttle: 10s
-    - multiply: 10
+    - throttle: 5s
+    - multiply: 0.01
   
   - name: "PV2 DC current"
+    id: pv2_dc_current
     device_class: energy
     unit_of_measurement: A
     accuracy_decimals: 1
@@ -213,6 +264,7 @@ sensor:
     - multiply: 0.1
   
   - name: "PV2 DC voltage"
+    id: pv2_dc_voltage
     device_class: energy
     unit_of_measurement: V
     accuracy_decimals: 0
@@ -234,27 +286,35 @@ sensor:
     filters:
     - throttle: 10s
   
+  - name: "PV2 HZ"
+    id: pv2_freq
+    device_class: energy
+    unit_of_measurement: V
+    accuracy_decimals: 0
+    filters:
+    - throttle: 10s
+  
   - name: "PV2 Heat sink #1"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
   
   - name: "PV2 Heat sink #2"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
 
   - name: "PV2 ISO +"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
   
   - name: "PV2 ISO -"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
 
@@ -272,11 +332,11 @@ sensor:
     device_class: energy
     # Set state_class in order for HA to use sensor in the Energy component
     state_class: total_increasing
-    unit_of_measurement: Wh
-    accuracy_decimals: 0
+    unit_of_measurement: kWh
+    accuracy_decimals: 3
     filters:
     - throttle: 10s
-    - multiply: 10
+    - multiply: 0.01
   
   - name: "PV3 DC current"
     device_class: energy
@@ -310,24 +370,24 @@ sensor:
   
   - name: "PV3 Heat sink #1"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
   
   - name: "PV3 Heat sink #2"
     device_class: temperature
-    unit_of_measurement: °C
+    unit_of_measurement: Â°C
     filters:
     - throttle: 10s
 
   - name: "PV3 ISO +"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
   
   - name: "PV3 ISO -"
     device_class: energy
-    unit_of_measurement: kΩ
+    unit_of_measurement: kÎ©
     filters:
     - throttle: 10s
